@@ -1,0 +1,29 @@
+cmake_minimum_required(VERSION 3.20)
+project(fim_lite LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+include(FetchContent)
+
+FetchContent_Declare(
+    Catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG v3.7.1
+)
+FetchContent_MakeAvailable(Catch2)
+
+FetchContent_Declare(
+    json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+)
+FetchContent_MakeAvailable(json)
+
+find_package(OpenSSL REQUIRED)
+
+add_executable(fim_lite src/main.cpp)
+target_link_libraries(fim_lite PRIVATE nlohmann_json::nlohmann_json OpenSSL::Crypto)
+
+add_executable(fim_lite_tests tests/test_main.cpp)
+target_link_libraries(fim_lite_tests PRIVATE Catch2::Catch2WithMain)
