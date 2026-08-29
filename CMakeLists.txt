@@ -22,7 +22,10 @@ FetchContent_MakeAvailable(json)
 
 find_package(OpenSSL REQUIRED)
 
-add_executable(fim_lite src/main.cpp)
+add_executable(fim_lite 
+    src/main.cpp
+    src/hasher.cpp
+)
 target_link_libraries(fim_lite PRIVATE nlohmann_json::nlohmann_json OpenSSL::Crypto)
 
 add_executable(fim_lite_tests tests/test_main.cpp)
