@@ -1,4 +1,4 @@
-#include "../include/fimlite/hasher.hpp"
+#include "fimlite/hasher.hpp"
 
 #include <array>
 #include <cstddef>

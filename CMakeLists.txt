@@ -50,8 +50,8 @@ target_link_libraries(fim_lite PRIVATE
 )
 
 add_executable(fim_lite_tests
-    tests/test_main.cpp
     tests/test_baseline.cpp
+    tests/test_scanner.cpp
 )
 
 target_link_libraries(fim_lite_tests PRIVATE
