@@ -30,6 +30,7 @@ add_library(fimlite_core
     src/hasher.cpp
     src/baseline.cpp
     src/scanner.cpp
+    src/cli.cpp
 )
 
 target_include_directories(fimlite_core PUBLIC
