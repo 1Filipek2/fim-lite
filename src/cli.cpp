@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <filesystem>
+#include <string>
 
 namespace fimlite
 {
@@ -11,11 +12,17 @@ namespace fimlite
 namespace 
 {
 
-void print_usage(const char* program_name)
+void print_usage(const char* program_name, std::ostream& out)
 {
-    std::cerr << "Usage:\n"
-        << "  " << program_name << " init <folder> baseline.json\n"
-        << "  " << program_name << " check <folder> baseline.json\n";
+    out << "fimlite - File Integrity Monitoring Lite\n"
+        << "Usage:\n"
+        << "  " << program_name << " init <root_directory> <baseline_file>\n"
+        << "  " << program_name << " check <root_directory> <baseline_file>\n"
+        << "  " << program_name << " help, --help\n"
+        << "Commands:\n"
+        << "  init   Create a baseline of the specified directory.\n"
+        << "  check  Check the specified directory against the baseline.\n"
+        << "  help    Displays this help message and exits successfully.\n";
 }
 
 void print_change(const Change& change)
@@ -68,13 +75,43 @@ int run_check(const std::filesystem::path& root, const std::filesystem::path& ba
 
 int run_cli(int argc, char** argv)
 {
-    if (argc != 4)
+    if (argc < 2)
     {
-        print_usage(argv[0]);
-        return 1;
+        std::cerr << "Error: No command provided.\n";
+        print_usage(argv[0], std::cerr);
+        return 2;
     }
 
     const std::string command = argv[1];
+
+    if (command == "help" || command == "--help")
+    {
+        if (argc > 2)
+        {
+            std::cerr << "Error: 'help' command does not take any additional arguments.\n";
+            print_usage(argv[0], std::cerr);
+            return 2;
+        }
+
+        print_usage(argv[0], std::cout);
+        return 0;
+    }
+
+    if (command != "init" && command != "check")
+    {
+        std::cerr << "Error: Unknown command '" << command << "'.\n";
+        print_usage(argv[0], std::cerr);
+        return 2;
+    }
+
+    if (argc != 4)
+    {
+        std::cerr << "Error: Command '" << command << "' missing arguments.\n"
+                  << "Expected: " << argv[0] << " " << command << " <folder> <baseline.json>\n\n";
+        print_usage(argv[0], std::cerr);
+        return 2;
+    }
+
     const std::filesystem::path root = argv[2];
     const std::filesystem::path baseline_path = argv[3];
 
@@ -84,14 +121,9 @@ int run_cli(int argc, char** argv)
         {
             return run_init(root, baseline_path);
         }
-        else if (command == "check")
-        {
-            return run_check(root, baseline_path);
-        }
         else
         {
-            print_usage(argv[0]);
-            return 1;
+            return run_check(root, baseline_path);
         }
     }
     catch (const std::exception& e)
@@ -99,7 +131,6 @@ int run_cli(int argc, char** argv)
         std::cerr << "Error: " << e.what() << '\n';
         return 1;
     }
-
 }
 
 } // namespace fimlite
