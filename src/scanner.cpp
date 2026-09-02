@@ -3,19 +3,41 @@
 #include "fimlite/scanner.hpp"
 
 #include <chrono>
-#include <iostream>
 #include <filesystem>
 #include <stdexcept>
 
 namespace fimlite
 {
 
-FileRecordMap scan_directory(const std::filesystem::path& root)
+namespace
+{
+
+bool should_exclude(const std::filesystem::path& path,
+                    const std::vector<std::string>& exclude_names)
+{
+    const std::string filename = path.filename().string();
+
+    for (const auto& pattern : exclude_names)
+    {
+        if (filename == pattern)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+} // namespace
+
+FileRecordMap scan_directory(const std::filesystem::path& root,
+                             const std::vector<std::string>& exclude_names)
 {
     if (!std::filesystem::exists(root))
     {
         throw std::runtime_error("Root directory does not exist: " + root.string());
     }
+
     if (!std::filesystem::is_directory(root))
     {
         throw std::runtime_error("Path is not a directory: " + root.string());
@@ -23,36 +45,59 @@ FileRecordMap scan_directory(const std::filesystem::path& root)
 
     FileRecordMap result;
 
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(
-             root, std::filesystem::directory_options::skip_permission_denied))
+    const std::filesystem::recursive_directory_iterator end_iter;
+    std::filesystem::recursive_directory_iterator dir_iter(
+        root,
+        std::filesystem::directory_options::skip_permission_denied);
+
+    while (dir_iter != end_iter)
     {
-        if (!entry.is_regular_file())
-        {
-            continue;
-        }
+        const auto& entry = *dir_iter;
+        const auto& path = entry.path();
 
         try
         {
-            const std::string path = std::filesystem::relative(entry.path(), root).string();
-            const auto size = entry.file_size();
-            const auto last_write_time = entry.last_write_time();
+            if (should_exclude(path, exclude_names))
+            {
+                if (entry.is_directory())
+                {
+                    dir_iter.disable_recursion_pending();
+                }
 
-            const auto file_now = std::filesystem::file_time_type::clock::now();
-            const auto sys_now = std::chrono::system_clock::now();
+                ++dir_iter;
+                continue;
+            }
 
-            const auto sys_time_point = last_write_time - file_now + sys_now;
-            const auto casted_time_point = std::chrono::time_point_cast<std::chrono::seconds>(sys_time_point);
+            if (entry.is_regular_file())
+            {
+                const std::string relative_path = std::filesystem::relative(path, root).string();
+                const auto size = entry.file_size();
+                const auto last_write_time = entry.last_write_time();
+                const auto file_now = std::filesystem::file_time_type::clock::now();
+                const auto sys_now = std::chrono::system_clock::now();
+                const auto sys_time_point = last_write_time - file_now + sys_now;
+                const auto casted_time_point =
+                    std::chrono::time_point_cast<std::chrono::seconds>(sys_time_point);
+                const long long epoch_time =
+                    static_cast<long long>(std::chrono::system_clock::to_time_t(casted_time_point));
+                const auto hash = sha256_file(path);
 
-            const long long epoch_time = static_cast<long long>(std::chrono::system_clock::to_time_t(casted_time_point));
-
-            const auto hash = sha256_file(entry.path());
-
-            result[path] = FileRecord{path, hash, size, epoch_time};
+                result[relative_path] = FileRecord
+                {
+                    relative_path,
+                    hash,
+                    size,
+                    epoch_time
+                };
+            }
         }
-        catch (const std::filesystem::filesystem_error& e)
+        catch (const std::filesystem::filesystem_error&)
         {
-            std::cerr << "Error processing " << entry.path() << ": " << e.what() << '\n';
+            ++dir_iter;
+            continue;
         }
+
+        ++dir_iter;
     }
 
     return result;

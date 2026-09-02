@@ -1,10 +1,10 @@
 #pragma once
 
-#include "fimlite/baseline.hpp"
-
 #include <filesystem>
-#include <vector>
 #include <string>
+#include <vector>
+
+#include "fimlite/baseline.hpp"
 
 namespace fimlite
 {
@@ -22,7 +22,8 @@ struct Change
     std::string path;
 };
 
-FileRecordMap scan_directory(const std::filesystem::path& root);
+FileRecordMap scan_directory(const std::filesystem::path& root,
+                             const std::vector<std::string>& exclude_names = {});
 std::vector<Change> diff(const FileRecordMap& baseline, const FileRecordMap& current);
 
 } // namespace fimlite
