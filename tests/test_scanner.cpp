@@ -196,3 +196,103 @@ TEST_CASE("Scan directory finds regular files and computes matching hashes")
     std::filesystem::remove_all(temp_dir);
 }
 
+TEST_CASE("Scan directory excludes specified file")
+{
+    const std::filesystem::path temp_dir =
+        std::filesystem::temp_directory_path() / "fim_lite_test_exclude_file";
+
+    std::filesystem::remove_all(temp_dir);
+    std::filesystem::create_directories(temp_dir);
+
+    {
+        std::ofstream keep_file(temp_dir / "keep.txt");
+        keep_file << "keep this file";
+
+        std::ofstream exclude_file(temp_dir / "exclude.txt");
+        exclude_file << "exclude this file";
+    }
+
+    const auto records = fimlite::scan_directory(temp_dir, {"exclude.txt"});
+
+    REQUIRE(records.size() == 1);
+    REQUIRE(records.find("keep.txt") != records.end());
+    REQUIRE(records.find("exclude.txt") == records.end());
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("Scan directory excludes specified directory and its contents")
+{
+    const std::filesystem::path temp_dir =
+        std::filesystem::temp_directory_path() / "fim_lite_test_exclude_dir";
+
+    std::filesystem::remove_all(temp_dir);
+
+    const auto src_dir = temp_dir / "src";
+    const auto build_dir = temp_dir / "build";
+    const auto nested_dir = build_dir / "nested";
+
+    std::filesystem::create_directories(src_dir);
+    std::filesystem::create_directories(nested_dir);
+
+    {
+        std::ofstream(src_dir / "main.cpp") << "int main() { return 0; }";
+        std::ofstream(build_dir / "app.txt") << "build output";
+        std::ofstream(nested_dir / "temp.txt") << "temporary file";
+    }
+
+    const auto records = fimlite::scan_directory(temp_dir, {"build"});
+
+    REQUIRE(records.size() == 1);
+    REQUIRE(records.find("src/main.cpp") != records.end());
+    REQUIRE(records.find("build/app.txt") == records.end());
+    REQUIRE(records.find("build/nested/temp.txt") == records.end());
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("Scan directory supports multiple exclude names")
+{
+    const std::filesystem::path temp_dir =
+        std::filesystem::temp_directory_path() / "fim_lite_test_multiple_excludes";
+
+    std::filesystem::remove_all(temp_dir);
+
+    std::filesystem::create_directories(
+        temp_dir / "build"
+    );
+
+    std::filesystem::create_directories(
+        temp_dir / "logs"
+    );
+
+    {
+        std::ofstream(temp_dir / "keep.txt") << "keep";
+        std::ofstream(temp_dir / "ignore.txt") << "ignore";
+
+        std::ofstream(temp_dir / "build" / "app.txt")
+            << "build file";
+
+        std::ofstream(temp_dir / "logs" / "log.txt")
+            << "log file";
+    }
+
+    const auto records = fimlite::scan_directory(
+        temp_dir,
+        {
+            "ignore.txt",
+            "build",
+            "logs"
+        }
+    );
+
+    REQUIRE(records.size() == 1);
+
+    REQUIRE(records.find("keep.txt") != records.end());
+
+    REQUIRE(records.find("ignore.txt") == records.end());
+    REQUIRE(records.find("build/app.txt") == records.end());
+    REQUIRE(records.find("logs/log.txt") == records.end());
+
+    std::filesystem::remove_all(temp_dir);
+}
