@@ -5,6 +5,7 @@
 #include <iostream>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace fimlite
 {
@@ -16,8 +17,8 @@ void print_usage(const char* program_name, std::ostream& out)
 {
     out << "fimlite - File Integrity Monitoring Lite\n"
         << "Usage:\n"
-        << "  " << program_name << " init <root_directory> <baseline_file>\n"
-        << "  " << program_name << " check <root_directory> <baseline_file>\n"
+        << "  " << program_name << " init <root_directory> <baseline_file> [--exclude <name> ...]\n"
+        << "  " << program_name << " check <root_directory> <baseline_file> [--exclude <name> ...]\n"
         << "  " << program_name << " help, --help\n"
         << "Commands:\n"
         << "  init   Create a baseline of the specified directory.\n"
@@ -41,9 +42,11 @@ void print_change(const Change& change)
     }
 }
 
-int run_init(const std::filesystem::path& root, const std::filesystem::path& baseline_path)
+int run_init(const std::filesystem::path& root,
+             const std::filesystem::path& baseline_path,
+             const std::vector<std::string>& exclude_names)
 {
-    const auto records = scan_directory(root);
+    const auto records = scan_directory(root, exclude_names);
     save_baseline(records, baseline_path);
 
     std::cout << "Baseline created: " << records.size() << " files scanned.\n";
@@ -51,10 +54,12 @@ int run_init(const std::filesystem::path& root, const std::filesystem::path& bas
     return 0;
 }
 
-int run_check(const std::filesystem::path& root, const std::filesystem::path& baseline_path)
+int run_check(const std::filesystem::path& root,
+              const std::filesystem::path& baseline_path,
+              const std::vector<std::string>& exclude_names)
 {
     const auto baseline = load_baseline(baseline_path);
-    const auto current = scan_directory(root);
+    const auto current = scan_directory(root, exclude_names);
     const auto changes = diff(baseline, current);
 
     if (changes.empty())
@@ -104,10 +109,15 @@ int run_cli(int argc, char** argv)
         return 2;
     }
 
-    if (argc != 4)
+    if (argc < 4)
     {
         std::cerr << "Error: Command '" << command << "' missing arguments.\n"
-                  << "Expected: " << argv[0] << " " << command << " <folder> <baseline.json>\n\n";
+                  << "Expected: " 
+                  << argv[0] 
+                  << " " 
+                  << command 
+                  << " <folder> <baseline.json> [--exclude <name> ...]\n\n";
+                  
         print_usage(argv[0], std::cerr);
         return 2;
     }
@@ -115,15 +125,47 @@ int run_cli(int argc, char** argv)
     const std::filesystem::path root = argv[2];
     const std::filesystem::path baseline_path = argv[3];
 
+    std::vector<std::string> exclude_names;
+
+    for (int i = 4; i < argc; ++i)
+    {
+        const std::string argument = argv[i];
+
+        if (argument == "--exclude")
+        {
+            if (i + 1 >= argc)
+            {
+                std::cerr << "Error: '--exclude' option requires a name argument.\n";
+                return 2;
+            }
+
+            const std::string exclude_name = argv[++i];
+
+            if (exclude_name.empty())
+            {
+                std::cerr << "Error: '--exclude' option requires a non-empty name argument.\n";
+                return 2;
+            }
+
+            exclude_names.push_back(exclude_name);
+        }
+        else
+        {
+            std::cerr << "Error: Unknown option '" << argument << "'.\n";
+            print_usage(argv[0], std::cerr);
+            return 2;
+        }
+    }
+
     try
     {
         if (command == "init")
         {
-            return run_init(root, baseline_path);
+            return run_init(root, baseline_path, exclude_names);
         }
         else
         {
-            return run_check(root, baseline_path);
+            return run_check(root, baseline_path, exclude_names);
         }
     }
     catch (const std::exception& e)
