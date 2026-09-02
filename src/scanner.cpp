@@ -5,6 +5,8 @@
 #include <chrono>
 #include <filesystem>
 #include <stdexcept>
+#include <string>
+#include <system_error>
 
 namespace fimlite
 {
@@ -31,7 +33,8 @@ bool should_exclude(const std::filesystem::path& path,
 } // namespace
 
 FileRecordMap scan_directory(const std::filesystem::path& root,
-                             const std::vector<std::string>& exclude_names)
+                             const std::vector<std::string>& exclude_names,
+                             std::vector<SkippedEntry>* skipped)
 {
     if (!std::filesystem::exists(root))
     {
@@ -44,33 +47,55 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
     }
 
     FileRecordMap result;
+    std::error_code ec;
 
     const std::filesystem::recursive_directory_iterator end_iter;
+
     std::filesystem::recursive_directory_iterator dir_iter(
         root,
-        std::filesystem::directory_options::skip_permission_denied);
+        ec);
+
+    if (ec)
+    {
+        if (skipped)
+        {
+            skipped->push_back({root.string(), ec.message()});
+        }
+        return result;
+    }
 
     while (dir_iter != end_iter)
     {
         const auto& entry = *dir_iter;
-        const auto& path = entry.path();
+        const std::string current_path = entry.path().string();
 
         try
         {
-            if (should_exclude(path, exclude_names))
+            if (should_exclude(entry.path(), exclude_names))
             {
                 if (entry.is_directory())
                 {
                     dir_iter.disable_recursion_pending();
                 }
 
-                ++dir_iter;
+                dir_iter.increment(ec);
+                
+                if (ec)
+                {
+                    if (skipped)
+                    {
+                        skipped->push_back({current_path, ec.message()});
+                    }
+
+                    ec.clear();
+                }
+
                 continue;
             }
 
             if (entry.is_regular_file())
             {
-                const std::string relative_path = std::filesystem::relative(path, root).string();
+                const std::string relative_path = std::filesystem::relative(entry.path(), root).string();
                 const auto size = entry.file_size();
                 const auto last_write_time = entry.last_write_time();
                 const auto file_now = std::filesystem::file_time_type::clock::now();
@@ -80,7 +105,7 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
                     std::chrono::time_point_cast<std::chrono::seconds>(sys_time_point);
                 const long long epoch_time =
                     static_cast<long long>(std::chrono::system_clock::to_time_t(casted_time_point));
-                const auto hash = sha256_file(path);
+                const auto hash = sha256_file(entry.path());
 
                 result[relative_path] = FileRecord
                 {
@@ -91,13 +116,29 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
                 };
             }
         }
-        catch (const std::filesystem::filesystem_error&)
+        catch (const std::filesystem::filesystem_error& e)
         {
-            ++dir_iter;
+            if (skipped)
+            {
+                skipped->push_back({current_path, e.what()});
+            }
+
+            dir_iter.increment(ec);
+            ec.clear();
             continue;
         }
 
-        ++dir_iter;
+        dir_iter.increment(ec);
+
+        if (ec)
+        {
+            if (skipped)
+            {
+                skipped->push_back({current_path, ec.message()});
+            }
+            
+            ec.clear();
+        }
     }
 
     return result;

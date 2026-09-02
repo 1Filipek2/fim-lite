@@ -42,16 +42,35 @@ void print_change(const Change& change)
     }
 }
 
+void print_skipped(const std::vector<SkippedEntry>& skipped)
+{
+    if (skipped.empty())
+    {
+        return;
+    }
+
+    std::cerr << "Warning: " << skipped.size()
+              << (skipped.size() == 1 ? " entry skipped due to errors:\n" : " entries skipped due to errors:\n");
+
+    for (const auto& entry : skipped)
+    {
+        std::cerr << "  " << entry.path << ": " << entry.reason << '\n';
+    }
+}
+
 int run_init(const std::filesystem::path& root,
              const std::filesystem::path& baseline_path,
              const std::vector<std::string>& exclude_names)
 {
-    const auto records = scan_directory(root, exclude_names);
+    std::vector<SkippedEntry> skipped;
+    const auto records = scan_directory(root, exclude_names, &skipped);
     save_baseline(records, baseline_path);
+
+    print_skipped(skipped);
 
     std::cout << "Baseline created: " << records.size() << " files scanned.\n";
 
-    return 0;
+    return skipped.empty() ? 0 : 3;
 }
 
 int run_check(const std::filesystem::path& root,
@@ -59,8 +78,12 @@ int run_check(const std::filesystem::path& root,
               const std::vector<std::string>& exclude_names)
 {
     const auto baseline = load_baseline(baseline_path);
-    const auto current = scan_directory(root, exclude_names);
+
+    std::vector<SkippedEntry> skipped;
+    const auto current = scan_directory(root, exclude_names, &skipped);
     const auto changes = diff(baseline, current);
+
+    print_skipped(skipped);
 
     if (changes.empty())
     {
