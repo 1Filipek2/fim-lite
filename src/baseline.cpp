@@ -23,14 +23,42 @@ void save_baseline(const FileRecordMap& records, const std::filesystem::path& ou
 
     j["files"] = files;
 
-    std::ofstream file(out);
+    const std::filesystem::path tmp_path = out.string() + ".tmp";
 
-    if (!file)
     {
-        throw std::runtime_error("Failed to open baseline file");
+        std::ofstream file(tmp_path);
+
+        if (!file)
+        {
+            throw std::runtime_error("Failed to open baseline file");
+        }
+
+        file << j.dump(4);
+        file.flush();
+
+        if (!file)
+        {
+            std::filesystem::remove(tmp_path);
+            throw std::runtime_error("Failed to write baseline file");
+        }
+
+        file.close();
+
+        if (file.fail())
+        {
+            std::filesystem::remove(tmp_path);
+            throw std::runtime_error("Failed to close baseline file");
+        }
     }
 
-    file << j.dump(4);
+    std::error_code ec;
+    std::filesystem::rename(tmp_path, out, ec);
+
+    if (ec)
+    {
+        std::filesystem::remove(tmp_path);
+        throw std::runtime_error("Failed to finalize baseline file: " + ec.message());
+    }
 }
 
 FileRecordMap load_baseline(const std::filesystem::path& in)
