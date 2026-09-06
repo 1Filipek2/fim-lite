@@ -53,6 +53,7 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
 
     std::filesystem::recursive_directory_iterator dir_iter(
         root,
+        std::filesystem::directory_options::skip_permission_denied,
         ec);
 
     if (ec)
@@ -61,6 +62,7 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
         {
             skipped->push_back({root.string(), ec.message()});
         }
+
         return result;
     }
 
@@ -77,23 +79,23 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
                 {
                     dir_iter.disable_recursion_pending();
                 }
+            }
+            else if (entry.is_directory())
+            {
+                std::error_code probe_ec;
+                const std::filesystem::directory_iterator probe(entry.path(), probe_ec);
 
-                dir_iter.increment(ec);
-                
-                if (ec)
+                if (probe_ec)
                 {
                     if (skipped)
                     {
-                        skipped->push_back({current_path, ec.message()});
+                        skipped->push_back({current_path, probe_ec.message()});
                     }
 
-                    ec.clear();
+                    dir_iter.disable_recursion_pending();
                 }
-
-                continue;
             }
-
-            if (entry.is_regular_file())
+            else if (entry.is_regular_file())
             {
                 const std::string relative_path = std::filesystem::relative(entry.path(), root).string();
                 const auto size = entry.file_size();
@@ -116,16 +118,12 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
                 };
             }
         }
-        catch (const std::filesystem::filesystem_error& e)
+        catch (const std::exception& e)
         {
             if (skipped)
             {
                 skipped->push_back({current_path, e.what()});
             }
-
-            dir_iter.increment(ec);
-            ec.clear();
-            continue;
         }
 
         dir_iter.increment(ec);
@@ -134,10 +132,11 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
         {
             if (skipped)
             {
-                skipped->push_back({current_path, ec.message()});
+                skipped->push_back({current_path, "Traversal aborted: " + ec.message()});
             }
-            
+
             ec.clear();
+            break;
         }
     }
 
