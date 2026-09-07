@@ -97,7 +97,7 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
             }
             else if (entry.is_regular_file())
             {
-                const std::string relative_path = std::filesystem::relative(entry.path(), root).string();
+                const std::string relative_path = std::filesystem::relative(entry.path(), root).generic_string();
                 const auto size = entry.file_size();
                 const auto last_write_time = entry.last_write_time();
                 const auto file_now = std::filesystem::file_time_type::clock::now();

@@ -21,10 +21,25 @@ The basic workflow is:
 
 ## Build
 
+### Linux
+
 ```bash
 cmake -S . -B build
 cmake --build build
 ```
+
+### Windows
+
+OpenSSL is not available by default, so install it with vcpkg and point CMake at the
+vcpkg toolchain file:
+
+```powershell
+vcpkg install openssl:x64-windows
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<vcpkg-root>/scripts/buildsystems/vcpkg.cmake
+cmake --build build
+```
+
+Tests that rely on POSIX file permissions are compiled only on non-Windows platforms.
 
 ## Usage
 

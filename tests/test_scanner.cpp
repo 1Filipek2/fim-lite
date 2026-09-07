@@ -7,7 +7,9 @@
 #include <filesystem>
 #include <fstream>
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 TEST_CASE("Diff detects added, removed and modified files")
 {
@@ -299,6 +301,8 @@ TEST_CASE("Scan directory supports multiple exclude names")
     std::filesystem::remove_all(temp_dir);
 }
 
+#ifndef _WIN32
+
 TEST_CASE("Scan directory continues past an unreadable directory and reports it")
 {
     if (::geteuid() == 0)
@@ -380,3 +384,5 @@ TEST_CASE("Scan directory reports an unreadable file instead of failing the scan
 
     std::filesystem::remove_all(temp_dir);
 }
+
+#endif
