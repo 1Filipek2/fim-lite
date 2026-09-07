@@ -80,7 +80,7 @@ std::string sha256_file(const std::filesystem::path& path)
 
     if (!file)
     {
-        throw std::runtime_error("Failed to open file");
+        throw std::runtime_error("Failed to open file: " + path.string());
     }
 
     Sha256Hasher hasher;
@@ -101,7 +101,7 @@ std::string sha256_file(const std::filesystem::path& path)
 
     if (!file.eof())
     {
-        throw std::runtime_error("Failed to read file");
+        throw std::runtime_error("Failed to read file: " + path.string());
     }
 
     return hasher.finalize();
