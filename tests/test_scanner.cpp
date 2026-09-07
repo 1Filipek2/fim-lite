@@ -7,6 +7,8 @@
 #include <filesystem>
 #include <fstream>
 
+#include <unistd.h>
+
 TEST_CASE("Diff detects added, removed and modified files")
 {
     fimlite::FileRecordMap baseline;
@@ -293,6 +295,88 @@ TEST_CASE("Scan directory supports multiple exclude names")
     REQUIRE(records.find("ignore.txt") == records.end());
     REQUIRE(records.find("build/app.txt") == records.end());
     REQUIRE(records.find("logs/log.txt") == records.end());
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("Scan directory continues past an unreadable directory and reports it")
+{
+    if (::geteuid() == 0)
+    {
+        SUCCEED("Skipped: running as root, chmod 000 is not enforced");
+        return;
+    }
+
+    const std::filesystem::path temp_dir =
+        std::filesystem::temp_directory_path() / "fim_lite_test_denied";
+
+    std::filesystem::remove_all(temp_dir);
+
+    const auto readable_dir = temp_dir / "a";
+    const auto denied_dir = temp_dir / "denied";
+
+    std::filesystem::create_directories(readable_dir);
+    std::filesystem::create_directories(denied_dir);
+
+    {
+        std::ofstream(readable_dir / "f1.txt") << "one";
+        std::ofstream(temp_dir / "top.txt") << "two";
+    }
+
+    std::filesystem::permissions(denied_dir, std::filesystem::perms::none);
+
+    std::vector<fimlite::SkippedEntry> skipped;
+
+    const auto records = fimlite::scan_directory(temp_dir, {}, &skipped);
+
+    std::filesystem::permissions(denied_dir, std::filesystem::perms::owner_all);
+
+    REQUIRE(records.size() == 2);
+
+    REQUIRE(records.find("a/f1.txt") != records.end());
+    REQUIRE(records.find("top.txt") != records.end());
+
+    REQUIRE(skipped.size() == 1);
+    REQUIRE(skipped[0].path == denied_dir.string());
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("Scan directory reports an unreadable file instead of failing the scan")
+{
+    if (::geteuid() == 0)
+    {
+        SUCCEED("Skipped: running as root, chmod 000 is not enforced");
+        return;
+    }
+
+    const std::filesystem::path temp_dir =
+        std::filesystem::temp_directory_path() / "fim_lite_test_unreadable_file";
+
+    std::filesystem::remove_all(temp_dir);
+    std::filesystem::create_directories(temp_dir);
+
+    const auto unreadable_file = temp_dir / "secret.txt";
+
+    {
+        std::ofstream(temp_dir / "keep.txt") << "keep";
+        std::ofstream(unreadable_file) << "secret";
+    }
+
+    std::filesystem::permissions(unreadable_file, std::filesystem::perms::none);
+
+    std::vector<fimlite::SkippedEntry> skipped;
+
+    const auto records = fimlite::scan_directory(temp_dir, {}, &skipped);
+
+    std::filesystem::permissions(unreadable_file, std::filesystem::perms::owner_all);
+
+    REQUIRE(records.size() == 1);
+    REQUIRE(records.find("keep.txt") != records.end());
+    REQUIRE(records.find("secret.txt") == records.end());
+
+    REQUIRE(skipped.size() == 1);
+    REQUIRE(skipped[0].path == unreadable_file.string());
 
     std::filesystem::remove_all(temp_dir);
 }
