@@ -23,7 +23,8 @@ void save_baseline(const FileRecordMap& records, const std::filesystem::path& ou
 
     j["files"] = files;
 
-    const std::filesystem::path tmp_path = out.string() + ".tmp";
+    std::filesystem::path tmp_path = out;
+    tmp_path += ".tmp";
 
     {
         std::ofstream file(tmp_path);

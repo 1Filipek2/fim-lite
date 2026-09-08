@@ -31,6 +31,7 @@ add_library(fimlite_core
     src/baseline.cpp
     src/scanner.cpp
     src/cli.cpp
+    src/paths.cpp
 )
 
 target_include_directories(fimlite_core PUBLIC

@@ -1,4 +1,5 @@
 #include "fimlite/hasher.hpp"
+#include "fimlite/paths.hpp"
 
 #include <array>
 #include <cstddef>
@@ -80,7 +81,7 @@ std::string sha256_file(const std::filesystem::path& path)
 
     if (!file)
     {
-        throw std::runtime_error("Failed to open file: " + path.string());
+        throw std::runtime_error("Failed to open file: " + to_utf8_native(path));
     }
 
     Sha256Hasher hasher;
@@ -101,7 +102,7 @@ std::string sha256_file(const std::filesystem::path& path)
 
     if (!file.eof())
     {
-        throw std::runtime_error("Failed to read file: " + path.string());
+        throw std::runtime_error("Failed to read file: " + to_utf8_native(path));
     }
 
     return hasher.finalize();

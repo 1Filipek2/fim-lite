@@ -1,6 +1,7 @@
 #include "fimlite/baseline.hpp"
 #include "fimlite/hasher.hpp"
 #include "fimlite/scanner.hpp"
+#include "fimlite/paths.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -17,7 +18,7 @@ namespace
 bool should_exclude(const std::filesystem::path& path,
                     const std::vector<std::string>& exclude_names)
 {
-    const std::string filename = path.filename().string();
+    const std::string filename = to_utf8_native(path.filename());
 
     for (const auto& pattern : exclude_names)
     {
@@ -38,12 +39,12 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
 {
     if (!std::filesystem::exists(root))
     {
-        throw std::runtime_error("Root directory does not exist: " + root.string());
+        throw std::runtime_error("Root directory does not exist: " + to_utf8_native(root));
     }
 
     if (!std::filesystem::is_directory(root))
     {
-        throw std::runtime_error("Path is not a directory: " + root.string());
+        throw std::runtime_error("Path is not a directory: " + to_utf8_native(root));
     }
 
     FileRecordMap result;
@@ -60,7 +61,7 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
     {
         if (skipped)
         {
-            skipped->push_back({root.string(), ec.message()});
+            skipped->push_back({to_utf8_native(root), ec.message()});
         }
 
         return result;
@@ -69,7 +70,7 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
     while (dir_iter != end_iter)
     {
         const auto& entry = *dir_iter;
-        const std::string current_path = entry.path().string();
+        const std::string current_path = to_utf8_native(entry.path());
 
         try
         {
@@ -97,7 +98,7 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
             }
             else if (entry.is_regular_file())
             {
-                const std::string relative_path = std::filesystem::relative(entry.path(), root).generic_string();
+                const std::string relative_path = to_utf8(std::filesystem::relative(entry.path(), root));
                 const auto size = entry.file_size();
                 const auto last_write_time = entry.last_write_time();
                 const auto file_now = std::filesystem::file_time_type::clock::now();
