@@ -36,12 +36,25 @@ vcpkg toolchain file:
 ```powershell
 vcpkg install openssl:x64-windows
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<vcpkg-root>/scripts/buildsystems/vcpkg.cmake
-cmake --build build
+cmake --build build --config Debug
+```
+
+Visual Studio is a multi-config generator, so the configuration is chosen at build time
+(`--config Debug` / `--config Release`) rather than through `CMAKE_BUILD_TYPE`. The
+resulting binary is `build\Debug\fim_lite.exe`, and the tests have to be run with the
+same configuration:
+
+```powershell
+ctest --test-dir build -C Debug --output-on-failure
 ```
 
 Tests that rely on POSIX file permissions are compiled only on non-Windows platforms.
 
 ## Usage
+
+The examples below use the Linux binary path. On Windows the binary lives under the
+configuration directory, so use `build\Debug\fim_lite.exe` (or `build\Release\fim_lite.exe`)
+instead of `./build/fim_lite`.
 
 ### Create a baseline
 
@@ -81,6 +94,12 @@ Build and run the test suite with:
 
 ```bash
 ctest --test-dir build --output-on-failure
+```
+
+On Windows, pass the configuration you built with, otherwise `ctest` finds no tests:
+
+```powershell
+ctest --test-dir build -C Debug --output-on-failure
 ```
 
 The tests cover the core functionality, including file scanning, hashing, baseline storage, and change detection.
