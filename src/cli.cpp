@@ -1,5 +1,6 @@
 #include "fimlite/cli.hpp"
 #include "fimlite/baseline.hpp"
+#include "fimlite/paths.hpp"
 #include "fimlite/scanner.hpp"
 
 #include <iostream>
@@ -13,7 +14,7 @@ namespace fimlite
 namespace 
 {
 
-void print_usage(const char* program_name, std::ostream& out)
+void print_usage(const std::string& program_name, std::ostream& out)
 {
     out << "fimlite - File Integrity Monitoring Lite\n"
         << "Usage:\n"
@@ -101,68 +102,67 @@ int run_check(const std::filesystem::path& root,
 
 } // namespace
 
-int run_cli(int argc, char** argv)
+int run_cli(const std::vector<std::string>& args)
 {
-    if (argc < 2)
+    const std::string program_name = args.empty() ? "fim_lite" : args[0];
+
+    if (args.size() < 2)
     {
         std::cerr << "Error: No command provided.\n";
-        print_usage(argv[0], std::cerr);
+        print_usage(program_name, std::cerr);
         return 2;
     }
 
-    const std::string command = argv[1];
+    const std::string command = args[1];
 
     if (command == "help" || command == "--help")
     {
-        if (argc > 2)
+        if (args.size() > 2)
         {
             std::cerr << "Error: 'help' command does not take any additional arguments.\n";
-            print_usage(argv[0], std::cerr);
+            print_usage(program_name, std::cerr);
             return 2;
         }
 
-        print_usage(argv[0], std::cout);
+        print_usage(program_name, std::cout);
         return 0;
     }
 
     if (command != "init" && command != "check")
     {
         std::cerr << "Error: Unknown command '" << command << "'.\n";
-        print_usage(argv[0], std::cerr);
+        print_usage(program_name, std::cerr);
         return 2;
     }
 
-    if (argc < 4)
+    if (args.size() < 4)
     {
         std::cerr << "Error: Command '" << command << "' missing arguments.\n"
-                  << "Expected: " 
-                  << argv[0] 
-                  << " " 
-                  << command 
+                  << "Expected: "
+                  << program_name
+                  << " "
+                  << command
                   << " <folder> <baseline.json> [--exclude <name> ...]\n\n";
-                  
-        print_usage(argv[0], std::cerr);
+
+        print_usage(program_name, std::cerr);
         return 2;
     }
-
-    const std::filesystem::path root = argv[2];
-    const std::filesystem::path baseline_path = argv[3];
 
     std::vector<std::string> exclude_names;
 
-    for (int i = 4; i < argc; ++i)
+    for (std::size_t i = 4; i < args.size(); ++i)
     {
-        const std::string argument = argv[i];
+        const std::string argument = args[i];
 
         if (argument == "--exclude")
         {
-            if (i + 1 >= argc)
+            if (i + 1 >= args.size())
             {
                 std::cerr << "Error: '--exclude' option requires a name argument.\n";
                 return 2;
             }
 
-            const std::string exclude_name = argv[++i];
+            const std::string exclude_name = args[++i];
 
             if (exclude_name.empty())
             {
@@ -175,13 +175,16 @@ int run_cli(int argc, char** argv)
         else
         {
             std::cerr << "Error: Unknown option '" << argument << "'.\n";
-            print_usage(argv[0], std::cerr);
+            print_usage(program_name, std::cerr);
             return 2;
         }
     }
 
     try
     {
+        const std::filesystem::path root = from_utf8(args[2]);
+        const std::filesystem::path baseline_path = from_utf8(args[3]);
+
         if (command == "init")
         {
             return run_init(root, baseline_path, exclude_names);
