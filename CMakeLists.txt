@@ -47,6 +47,10 @@ target_link_libraries(fimlite_core PUBLIC
     OpenSSL::Crypto
 )
 
+if (MSVC)
+    target_compile_options(fimlite_core PUBLIC /utf-8)
+endif()
+
 add_executable(fim_lite
     src/main.cpp
 )
