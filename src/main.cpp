@@ -5,6 +5,7 @@
 
 #ifdef _WIN32
 
+#include "fimlite/console.hpp"
 #include "fimlite/paths.hpp"
 
 #include <exception>
@@ -12,6 +13,8 @@
 
 int wmain(int argc, wchar_t** argv)
 {
+    const fimlite::ConsoleCodePage console_code_page;
+
     std::vector<std::string> args;
 
     try

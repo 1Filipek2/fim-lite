@@ -34,6 +34,10 @@ add_library(fimlite_core
     src/paths.cpp
 )
 
+if (WIN32)
+    target_sources(fimlite_core PRIVATE src/console.cpp)
+endif()
+
 target_include_directories(fimlite_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
