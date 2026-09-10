@@ -69,11 +69,13 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
 
     while (dir_iter != end_iter)
     {
-        const auto& entry = *dir_iter;
-        const std::string current_path = to_utf8_native(entry.path());
+        std::string current_path;
 
         try
         {
+            const auto& entry = *dir_iter;
+            current_path = to_utf8_native(entry.path());
+        
             if (should_exclude(entry.path(), exclude_names))
             {
                 if (entry.is_directory())
@@ -123,7 +125,7 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
         {
             if (skipped)
             {
-                skipped->push_back({current_path, e.what()});
+                skipped->push_back({current_path.empty() ? "<unknown path>" : current_path, e.what()});
             }
         }
 
@@ -133,7 +135,8 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
         {
             if (skipped)
             {
-                skipped->push_back({current_path, "Traversal aborted: " + ec.message()});
+                skipped->push_back({current_path.empty() ? "<unknown path>" : current_path,
+                                    "Traversal aborted: " + ec.message()});
             }
 
             ec.clear();
