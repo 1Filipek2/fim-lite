@@ -3,9 +3,12 @@
 #include "fimlite/scanner.hpp"
 #include "fimlite/hasher.hpp"
 #include "fimlite/baseline.hpp"
+#include "fimlite/paths.hpp"
 
 #include <filesystem>
 #include <fstream>
+#include <string>
+#include <vector>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -301,6 +304,55 @@ TEST_CASE("Scan directory supports multiple exclude names")
     std::filesystem::remove_all(temp_dir);
 }
 
+TEST_CASE("Scan directory handles non-ASCII file names")
+{
+    const std::filesystem::path temp_dir =
+        std::filesystem::temp_directory_path() / "fim_lite_test_unicode";
+
+    std::filesystem::remove_all(temp_dir);
+    std::filesystem::create_directories(temp_dir);
+
+    const std::vector<std::string> names =
+    {
+        u8"ascii.txt",
+        u8"diakritika_č.txt",
+        u8"azbuka_ф.txt",
+        u8"cjk_测试.txt",
+        u8"emoji_🙂.txt"
+    };
+
+    std::vector<std::string> created;
+
+    for (const auto& name : names)
+    {
+        std::ofstream file(temp_dir / fimlite::from_utf8(name));
+
+        if (!file)
+        {
+            continue;
+        }
+
+        file << "content";
+        created.push_back(name);
+    }
+
+    REQUIRE(created.size() >= 2);
+
+    std::vector<fimlite::SkippedEntry> skipped;
+
+    const auto records = fimlite::scan_directory(temp_dir, {}, &skipped);
+
+    REQUIRE(skipped.empty());
+    REQUIRE(records.size() == created.size());
+
+    for (const auto& name : created)
+    {
+        REQUIRE(records.count(name) == 1);
+    }
+
+    std::filesystem::remove_all(temp_dir);
+}
+
 #ifndef _WIN32
 
 TEST_CASE("Scan directory continues past an unreadable directory and reports it")
@@ -341,7 +393,7 @@ TEST_CASE("Scan directory continues past an unreadable directory and reports it"
     REQUIRE(records.find("top.txt") != records.end());
 
     REQUIRE(skipped.size() == 1);
-    REQUIRE(skipped[0].path == denied_dir.string());
+    REQUIRE(skipped[0].path == fimlite::to_utf8_native(denied_dir));
 
     std::filesystem::remove_all(temp_dir);
 }
@@ -380,7 +432,7 @@ TEST_CASE("Scan directory reports an unreadable file instead of failing the scan
     REQUIRE(records.find("secret.txt") == records.end());
 
     REQUIRE(skipped.size() == 1);
-    REQUIRE(skipped[0].path == unreadable_file.string());
+    REQUIRE(skipped[0].path == fimlite::to_utf8_native(unreadable_file));
 
     std::filesystem::remove_all(temp_dir);
 }
