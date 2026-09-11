@@ -83,6 +83,13 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
                     dir_iter.disable_recursion_pending();
                 }
             }
+            else if (entry.is_symlink())
+            {
+                if (skipped)
+                {
+                    skipped->push_back({current_path, "Symlink not followed", SkipReason::Symlink});
+                }
+            }
             else if (entry.is_directory())
             {
                 std::error_code probe_ec;
