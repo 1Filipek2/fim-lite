@@ -16,10 +16,17 @@ enum class ChangeType
     Modified
 };
 
+enum class SkipReason
+{
+    Error,      // could not be read: the run is incomplete
+    Symlink     // intentionally not followed: the run is still complete
+};
+
 struct SkippedEntry
 {
     std::string path;
     std::string reason;
+    SkipReason kind = SkipReason::Error;
 };
 
 struct Change

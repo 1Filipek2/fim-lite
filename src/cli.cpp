@@ -3,6 +3,7 @@
 #include "fimlite/paths.hpp"
 #include "fimlite/scanner.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <filesystem>
 #include <string>
@@ -11,7 +12,7 @@
 namespace fimlite
 {
 
-namespace 
+namespace
 {
 
 void print_usage(const std::string& program_name, std::ostream& out)
@@ -45,18 +46,46 @@ void print_change(const Change& change)
 
 void print_skipped(const std::vector<SkippedEntry>& skipped)
 {
-    if (skipped.empty())
-    {
-        return;
-    }
-
-    std::cerr << "Warning: " << skipped.size()
-              << (skipped.size() == 1 ? " entry skipped due to errors:\n" : " entries skipped due to errors:\n");
+    std::size_t symlink_count = 0;
+    std::vector<const SkippedEntry*> errors;
 
     for (const auto& entry : skipped)
     {
-        std::cerr << "  " << entry.path << ": " << entry.reason << '\n';
+        if (entry.kind == SkipReason::Symlink)
+        {
+            ++symlink_count;
+        }
+        else
+        {
+            errors.push_back(&entry);
+        }
     }
+
+    if (!errors.empty())
+    {
+        std::cerr << "Warning: " << errors.size()
+                  << (errors.size() == 1 ? " entry skipped due to errors:\n" : " entries skipped due to errors:\n");
+
+        for (const auto* entry : errors)
+        {
+            std::cerr << "  " << entry->path << ": " << entry->reason << '\n';
+        }
+    }
+
+    if (symlink_count > 0)
+    {
+        std::cerr << "Note: " << symlink_count
+                  << (symlink_count == 1 ? " symlink not followed.\n" : " symlinks not followed.\n");
+    }
+}
+
+bool has_scan_errors(const std::vector<SkippedEntry>& skipped)
+{
+    return std::any_of(skipped.begin(), skipped.end(),
+                       [](const SkippedEntry& entry)
+                       {
+                           return entry.kind == SkipReason::Error;
+                       });
 }
 
 int run_init(const std::filesystem::path& root,
@@ -71,7 +100,7 @@ int run_init(const std::filesystem::path& root,
 
     std::cout << "Baseline created: " << records.size() << " files scanned.\n";
 
-    return skipped.empty() ? 0 : 3;
+    return has_scan_errors(skipped) ? 3 : 0;
 }
 
 int run_check(const std::filesystem::path& root,
