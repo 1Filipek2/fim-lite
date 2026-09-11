@@ -353,6 +353,47 @@ TEST_CASE("Scan directory handles non-ASCII file names")
     std::filesystem::remove_all(temp_dir);
 }
 
+TEST_CASE("Scan directory does not follow file symlinks")
+{
+    const std::filesystem::path temp_dir =
+        std::filesystem::temp_directory_path() / "fim_lite_test_symlink";
+
+    std::filesystem::remove_all(temp_dir);
+    std::filesystem::create_directories(temp_dir / "inside");
+    std::filesystem::create_directories(temp_dir / "outside");
+
+    {
+        std::ofstream(temp_dir / "outside" / "target.txt") << "outside the scanned tree";
+        std::ofstream(temp_dir / "inside" / "real.txt") << "inside";
+    }
+
+    std::error_code ec;
+    std::filesystem::create_symlink(temp_dir / "outside" / "target.txt",
+                                    temp_dir / "inside" / "link.txt",
+                                    ec);
+
+    if (ec)
+    {
+        std::filesystem::remove_all(temp_dir);
+        SUCCEED("Skipped: creating symlinks is not permitted here");
+        return;
+    }
+
+    std::vector<fimlite::SkippedEntry> skipped;
+
+    const auto records = fimlite::scan_directory(temp_dir / "inside", {}, &skipped);
+
+    REQUIRE(records.size() == 1);
+    REQUIRE(records.find("real.txt") != records.end());
+    REQUIRE(records.find("link.txt") == records.end());
+
+    REQUIRE(skipped.size() == 1);
+    REQUIRE(skipped[0].kind == fimlite::SkipReason::Symlink);
+    REQUIRE(skipped[0].path == fimlite::to_utf8_native(temp_dir / "inside" / "link.txt"));
+
+    std::filesystem::remove_all(temp_dir);
+}
+
 #ifndef _WIN32
 
 TEST_CASE("Scan directory continues past an unreadable directory and reports it")
