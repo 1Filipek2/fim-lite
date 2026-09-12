@@ -120,7 +120,7 @@ int run_check(const std::filesystem::path& root,
     const std::vector<std::string>& effective_exclude_names =
         overridden ? exclude_names : stored_exclude_names;
 
-    if (overridden && stored_exclude_names != exclude_names)
+    if (overridden && !exclude_names_equal_ignore_case(stored_exclude_names, exclude_names))
     {
         std::cerr << "Warning: --exclude differs from the patterns stored in the baseline; "
                      "using the command line values.\n";
