@@ -4,10 +4,22 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace fimlite
 {
+
+namespace
+{
+
+void remove_tmp_file(const std::filesystem::path& tmp_path)
+{
+    std::error_code remove_ec;
+    std::filesystem::remove(tmp_path, remove_ec);
+}
+
+} // namespace
 
 void save_baseline(const FileRecordMap& records,
                    const std::filesystem::path& out,
@@ -42,7 +54,7 @@ void save_baseline(const FileRecordMap& records,
 
         if (!file)
         {
-            std::filesystem::remove(tmp_path);
+            remove_tmp_file(tmp_path);
             throw std::runtime_error("Failed to write baseline file");
         }
 
@@ -50,7 +62,7 @@ void save_baseline(const FileRecordMap& records,
 
         if (file.fail())
         {
-            std::filesystem::remove(tmp_path);
+            remove_tmp_file(tmp_path);
             throw std::runtime_error("Failed to close baseline file");
         }
     }
@@ -60,7 +72,7 @@ void save_baseline(const FileRecordMap& records,
 
     if (ec)
     {
-        std::filesystem::remove(tmp_path);
+        remove_tmp_file(tmp_path);
         throw std::runtime_error("Failed to finalize baseline file: " + ec.message());
     }
 }
