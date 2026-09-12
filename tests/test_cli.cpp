@@ -138,6 +138,26 @@ TEST_CASE("Command line excludes override the stored patterns")
     std::filesystem::remove_all(temp_dir);
 }
 
+TEST_CASE("Check matches stored excludes regardless of letter case")
+{
+    const auto temp_dir = make_temp_dir("fim_lite_test_cli_exclude_case");
+    const auto data_dir = temp_dir / "data";
+    const auto ignored_dir = data_dir / "Ignored";
+
+    std::filesystem::create_directories(ignored_dir);
+    std::ofstream(data_dir / "tracked.txt") << "tracked";
+    std::ofstream(ignored_dir / "noise.txt") << "noise";
+
+    const auto root = fimlite::to_utf8_native(data_dir);
+    const auto baseline = fimlite::to_utf8_native(temp_dir / "baseline.json");
+
+    REQUIRE(run_quiet({"fim_lite", "init", root, baseline, "--exclude", "ignored"}) == 0);
+
+    REQUIRE(run_quiet({"fim_lite", "check", root, baseline, "--exclude", "IGNORED"}) == 0);
+
+    std::filesystem::remove_all(temp_dir);
+}
+
 TEST_CASE("Symlinks do not make init or check incomplete")
 {
     const auto temp_dir = make_temp_dir("fim_lite_test_cli_symlink");

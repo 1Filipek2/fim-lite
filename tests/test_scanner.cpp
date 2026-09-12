@@ -258,6 +258,72 @@ TEST_CASE("Scan directory excludes specified directory and its contents")
     std::filesystem::remove_all(temp_dir);
 }
 
+TEST_CASE("Scan directory matches exclude names case-insensitively")
+{
+    const std::filesystem::path temp_dir =
+        std::filesystem::temp_directory_path() / "fim_lite_test_exclude_case";
+
+    std::filesystem::remove_all(temp_dir);
+
+    const auto src_dir = temp_dir / "src";
+    const auto build_dir = temp_dir / "Build";
+
+    std::filesystem::create_directories(src_dir);
+    std::filesystem::create_directories(build_dir);
+
+    {
+        std::ofstream(src_dir / "main.cpp") << "int main() { return 0; }";
+        std::ofstream(build_dir / "app.txt") << "build output";
+        std::ofstream(temp_dir / "Notes.TXT") << "notes";
+    }
+
+    const auto records = fimlite::scan_directory(
+        temp_dir,
+        {
+            "build",
+            "notes.txt"
+        }
+    );
+
+    REQUIRE(records.size() == 1);
+    REQUIRE(records.find("src/main.cpp") != records.end());
+    REQUIRE(records.find("Build/app.txt") == records.end());
+    REQUIRE(records.find("Notes.TXT") == records.end());
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("Scan directory matches exclude names case-sensitively outside ASCII")
+{
+    const std::filesystem::path temp_dir =
+        std::filesystem::temp_directory_path() / "fim_lite_test_exclude_case_unicode";
+
+    std::filesystem::remove_all(temp_dir);
+    std::filesystem::create_directories(temp_dir);
+
+    const auto lower_name = fimlite::from_utf8(u8"zálohy.txt");
+
+    {
+        std::ofstream file(temp_dir / lower_name);
+
+        if (!file)
+        {
+            std::filesystem::remove_all(temp_dir);
+            SUCCEED("Skipped: non-ASCII file names are not supported here");
+            return;
+        }
+
+        file << "content";
+    }
+
+    const auto records = fimlite::scan_directory(temp_dir, {u8"ZÁLOHY.TXT"});
+
+    REQUIRE(records.size() == 1);
+    REQUIRE(records.find(u8"zálohy.txt") != records.end());
+
+    std::filesystem::remove_all(temp_dir);
+}
+
 TEST_CASE("Scan directory supports multiple exclude names")
 {
     const std::filesystem::path temp_dir =
