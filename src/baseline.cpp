@@ -1,7 +1,11 @@
 #include "fimlite/baseline.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
+#include <random>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -12,6 +16,20 @@ namespace fimlite
 
 namespace
 {
+
+std::filesystem::path make_tmp_path(const std::filesystem::path& out)
+{
+    std::random_device device;
+    std::uniform_int_distribution<std::uint64_t> distribution;
+
+    std::ostringstream suffix;
+    suffix << '.' << std::hex << std::setw(16) << std::setfill('0') << distribution(device) << ".tmp";
+
+    std::filesystem::path tmp_path = out;
+    tmp_path += suffix.str();
+
+    return tmp_path;
+}
 
 void remove_tmp_file(const std::filesystem::path& tmp_path)
 {
@@ -38,8 +56,7 @@ void save_baseline(const FileRecordMap& records,
     j["files"] = files;
     j["exclude"] = exclude_names;
 
-    std::filesystem::path tmp_path = out;
-    tmp_path += ".tmp";
+    const std::filesystem::path tmp_path = make_tmp_path(out);
 
     {
         std::ofstream file(tmp_path);
