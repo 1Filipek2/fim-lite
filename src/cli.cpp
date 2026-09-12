@@ -25,7 +25,13 @@ void print_usage(const std::string& program_name, std::ostream& out)
         << "Commands:\n"
         << "  init   Create a baseline of the specified directory.\n"
         << "  check  Check the specified directory against the baseline.\n"
-        << "  help    Displays this help message and exits successfully.\n";
+        << "  help    Displays this help message and exits successfully.\n"
+        << "Exit codes:\n"
+        << "  0  Success: no changes detected and every entry was read.\n"
+        << "  1  Changes detected (check only). Takes precedence over 3.\n"
+        << "  2  Invalid command line usage.\n"
+        << "  3  Incomplete run: some entries could not be read. Symlinks that are not followed do not count.\n"
+        << "  4  Runtime error, such as a missing or corrupt baseline or an I/O failure.\n";
 }
 
 void print_change(const Change& change)
@@ -118,7 +124,7 @@ int run_check(const std::filesystem::path& root,
     if (changes.empty())
     {
         std::cout << "No changes detected.\n";
-        return 0;
+        return has_scan_errors(skipped) ? 3 : 0;
     }
 
     for (const auto& change : changes)
@@ -226,7 +232,7 @@ int run_cli(const std::vector<std::string>& args)
     catch (const std::exception& e)
     {
         std::cerr << "Error: " << e.what() << '\n';
-        return 1;
+        return 4;
     }
 }
 
