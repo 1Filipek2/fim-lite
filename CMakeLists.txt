@@ -61,6 +61,7 @@ target_link_libraries(fim_lite PRIVATE
 
 add_executable(fim_lite_tests
     tests/test_baseline.cpp
+    tests/test_cli.cpp
     tests/test_scanner.cpp
 )
 
