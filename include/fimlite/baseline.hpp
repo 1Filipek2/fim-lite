@@ -5,6 +5,7 @@
 #include <map>
 #include <cstdint>
 #include <string>
+#include <vector>
 #include <filesystem>
 
 namespace fimlite
@@ -22,7 +23,11 @@ struct FileRecord
 
 using FileRecordMap = std::map<std::string, FileRecord>;
 
-void save_baseline(const FileRecordMap& records, const std::filesystem::path& out);
-FileRecordMap load_baseline(const std::filesystem::path& in);
+void save_baseline(const FileRecordMap& records,
+                   const std::filesystem::path& out,
+                   const std::vector<std::string>& exclude_names = {});
+
+FileRecordMap load_baseline(const std::filesystem::path& in,
+                            std::vector<std::string>* exclude_names_out = nullptr);
 
 } // namespace fimlite

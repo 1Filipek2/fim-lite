@@ -9,7 +9,9 @@
 namespace fimlite
 {
 
-void save_baseline(const FileRecordMap& records, const std::filesystem::path& out)
+void save_baseline(const FileRecordMap& records,
+                   const std::filesystem::path& out,
+                   const std::vector<std::string>& exclude_names)
 {
     nlohmann::json j;
     j["version"] = 1;
@@ -22,6 +24,7 @@ void save_baseline(const FileRecordMap& records, const std::filesystem::path& ou
     }
 
     j["files"] = files;
+    j["exclude"] = exclude_names;
 
     std::filesystem::path tmp_path = out;
     tmp_path += ".tmp";
@@ -62,7 +65,8 @@ void save_baseline(const FileRecordMap& records, const std::filesystem::path& ou
     }
 }
 
-FileRecordMap load_baseline(const std::filesystem::path& in)
+FileRecordMap load_baseline(const std::filesystem::path& in,
+                            std::vector<std::string>* exclude_names_out)
 {
     if (!std::filesystem::exists(in))
     {
@@ -96,6 +100,11 @@ FileRecordMap load_baseline(const std::filesystem::path& in)
         for (const auto& record : files)
         {
             records[record.path] = record;
+        }
+
+        if (exclude_names_out)
+        {
+            *exclude_names_out = j.value("exclude", std::vector<std::string>{});
         }
 
         return records;
