@@ -100,7 +100,7 @@ int run_init(const std::filesystem::path& root,
 {
     std::vector<SkippedEntry> skipped;
     const auto records = scan_directory(root, exclude_names, &skipped);
-    save_baseline(records, baseline_path);
+    save_baseline(records, baseline_path, exclude_names);
 
     print_skipped(skipped);
 
@@ -113,10 +113,21 @@ int run_check(const std::filesystem::path& root,
               const std::filesystem::path& baseline_path,
               const std::vector<std::string>& exclude_names)
 {
-    const auto baseline = load_baseline(baseline_path);
+    std::vector<std::string> stored_exclude_names;
+    const auto baseline = load_baseline(baseline_path, &stored_exclude_names);
+
+    const bool overridden = !exclude_names.empty();
+    const std::vector<std::string>& effective_exclude_names =
+        overridden ? exclude_names : stored_exclude_names;
+
+    if (overridden && stored_exclude_names != exclude_names)
+    {
+        std::cerr << "Warning: --exclude differs from the patterns stored in the baseline; "
+                     "using the command line values.\n";
+    }
 
     std::vector<SkippedEntry> skipped;
-    const auto current = scan_directory(root, exclude_names, &skipped);
+    const auto current = scan_directory(root, effective_exclude_names, &skipped);
     const auto changes = diff(baseline, current);
 
     print_skipped(skipped);
