@@ -38,6 +38,8 @@ struct Change
 FileRecordMap scan_directory(const std::filesystem::path& root,
                              const std::vector<std::string>& exclude_names = {},
                              std::vector<SkippedEntry>* skipped = nullptr);
+bool exclude_names_equal_ignore_case(const std::vector<std::string>& left,
+                                     const std::vector<std::string>& right);
 std::vector<Change> diff(const FileRecordMap& baseline, const FileRecordMap& current);
 
 } // namespace fimlite

@@ -3,6 +3,8 @@
 #include "fimlite/scanner.hpp"
 #include "fimlite/paths.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <stdexcept>
@@ -15,6 +17,20 @@ namespace fimlite
 namespace
 {
 
+bool equals_ignore_case(const std::string& left, const std::string& right)
+{
+    if (left.size() != right.size())
+    {
+        return false;
+    }
+
+    return std::equal(left.begin(), left.end(), right.begin(),
+                      [](unsigned char left_char, unsigned char right_char)
+                      {
+                          return std::tolower(left_char) == std::tolower(right_char);
+                      });
+}
+
 bool should_exclude(const std::filesystem::path& path,
                     const std::vector<std::string>& exclude_names)
 {
@@ -22,7 +38,7 @@ bool should_exclude(const std::filesystem::path& path,
 
     for (const auto& pattern : exclude_names)
     {
-        if (filename == pattern)
+        if (equals_ignore_case(filename, pattern))
         {
             return true;
         }
@@ -32,6 +48,16 @@ bool should_exclude(const std::filesystem::path& path,
 }
 
 } // namespace
+
+bool exclude_names_equal_ignore_case(const std::vector<std::string>& left,
+                                     const std::vector<std::string>& right)
+{
+    return std::equal(left.begin(), left.end(), right.begin(), right.end(),
+                      [](const std::string& left_name, const std::string& right_name)
+                      {
+                          return equals_ignore_case(left_name, right_name);
+                      });
+}
 
 FileRecordMap scan_directory(const std::filesystem::path& root,
                              const std::vector<std::string>& exclude_names,
