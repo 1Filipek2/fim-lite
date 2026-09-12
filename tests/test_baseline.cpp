@@ -5,6 +5,9 @@
 #include "fimlite/scanner.hpp"
 
 #include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
 
 TEST_CASE("Baseline can be saved and loaded")
 {
@@ -68,4 +71,81 @@ TEST_CASE("Baseline round-trips non-ASCII paths and file names")
     REQUIRE(fimlite::diff(records, loaded).empty());
 
     std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("Baseline round-trips exclude patterns")
+{
+    const std::filesystem::path baseline_path = "test_baseline_exclude.json";
+
+    fimlite::FileRecordMap records;
+
+    records["kept.txt"] = fimlite::FileRecord
+    {
+        "kept.txt",
+        "abc",
+        3,
+        0
+    };
+
+    const std::vector<std::string> exclude_names =
+    {
+        "node_modules",
+        ".git",
+        u8"zálohy"
+    };
+
+    fimlite::save_baseline(records, baseline_path, exclude_names);
+
+    std::vector<std::string> loaded_exclude_names;
+
+    const auto loaded_records = fimlite::load_baseline(baseline_path, &loaded_exclude_names);
+
+    REQUIRE(loaded_records.size() == 1);
+    REQUIRE(loaded_exclude_names == exclude_names);
+
+    std::filesystem::remove(baseline_path);
+}
+
+TEST_CASE("Baseline without an exclude key still loads")
+{
+    const std::filesystem::path baseline_path = "test_baseline_legacy.json";
+
+    {
+        std::ofstream file(baseline_path);
+
+        file << R"({"version":1,"files":[{"path":"kept.txt","hash":"abc","size":3,"mtime":0}]})";
+    }
+
+    std::vector<std::string> loaded_exclude_names = {"stale"};
+
+    const auto loaded_records = fimlite::load_baseline(baseline_path, &loaded_exclude_names);
+
+    REQUIRE(loaded_records.size() == 1);
+    REQUIRE(loaded_exclude_names.empty());
+
+    std::filesystem::remove(baseline_path);
+}
+
+TEST_CASE("Baseline loads without asking for exclude patterns")
+{
+    const std::filesystem::path baseline_path = "test_baseline_no_out.json";
+
+    fimlite::FileRecordMap records;
+
+    records["kept.txt"] = fimlite::FileRecord
+    {
+        "kept.txt",
+        "abc",
+        3,
+        0
+    };
+
+    fimlite::save_baseline(records, baseline_path, {"node_modules"});
+
+    const auto loaded_records = fimlite::load_baseline(baseline_path);
+
+    REQUIRE(loaded_records.size() == 1);
+    REQUIRE(fimlite::load_baseline(baseline_path, nullptr).size() == 1);
+
+    std::filesystem::remove(baseline_path);
 }
