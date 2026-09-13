@@ -3,9 +3,11 @@
 #include "fimlite/cli.hpp"
 #include "fimlite/paths.hpp"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -42,6 +44,24 @@ std::filesystem::path make_temp_dir(const std::string& name)
     return dir;
 }
 
+void set_hmac_key_env(const std::string& value)
+{
+#ifdef _WIN32
+    _wputenv_s(L"FIMLITE_HMAC_KEY", fimlite::from_utf8(value).c_str());
+#else
+    ::setenv("FIMLITE_HMAC_KEY", value.c_str(), 1);
+#endif
+}
+
+void clear_hmac_key_env()
+{
+#ifdef _WIN32
+    _wputenv_s(L"FIMLITE_HMAC_KEY", L"");
+#else
+    ::unsetenv("FIMLITE_HMAC_KEY");
+#endif
+}
+
 } // namespace
 
 TEST_CASE("CLI returns 2 for invalid usage")
@@ -51,6 +71,9 @@ TEST_CASE("CLI returns 2 for invalid usage")
     REQUIRE(run_quiet({"fim_lite", "check", "root_only"}) == 2);
     REQUIRE(run_quiet({"fim_lite", "init", "root", "baseline.json", "--exclude"}) == 2);
     REQUIRE(run_quiet({"fim_lite", "init", "root", "baseline.json", "--unknown"}) == 2);
+    REQUIRE(run_quiet({"fim_lite", "init", "root", "baseline.json", "--hmac-key"}) == 2);
+    REQUIRE(run_quiet({"fim_lite", "init", "root", "baseline.json", "--hmac-key", ""}) == 2);
+    REQUIRE(run_quiet({"fim_lite", "init", "root", "baseline.json", "--hmac-key", "a", "--hmac-key", "b"}) == 2);
 }
 
 TEST_CASE("CLI returns 4 for runtime errors")
@@ -182,6 +205,93 @@ TEST_CASE("Symlinks do not make init or check incomplete")
 
     REQUIRE(run_quiet({"fim_lite", "init", root, baseline}) == 0);
     REQUIRE(run_quiet({"fim_lite", "check", root, baseline}) == 0);
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("Check verifies the baseline with the key given by --hmac-key")
+{
+    clear_hmac_key_env();
+
+    const auto temp_dir = make_temp_dir("fim_lite_test_cli_hmac_flag");
+    const auto data_dir = temp_dir / "data";
+
+    std::filesystem::create_directories(data_dir);
+    std::ofstream(data_dir / "file.txt") << "original";
+
+    const auto root = fimlite::to_utf8_native(data_dir);
+    const auto baseline = fimlite::to_utf8_native(temp_dir / "baseline.json");
+
+    REQUIRE(run_quiet({"fim_lite", "init", root, baseline, "--hmac-key", "secret"}) == 0);
+    REQUIRE(run_quiet({"fim_lite", "check", root, baseline, "--hmac-key", "secret"}) == 0);
+    REQUIRE(run_quiet({"fim_lite", "check", root, baseline, "--hmac-key", "wrong-key"}) == 5);
+    REQUIRE(run_quiet({"fim_lite", "check", root, baseline}) == 0);
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("Check returns 5 for an unsigned or tampered baseline when a key is given")
+{
+    clear_hmac_key_env();
+
+    const auto temp_dir = make_temp_dir("fim_lite_test_cli_hmac_exit_code");
+    const auto data_dir = temp_dir / "data";
+
+    std::filesystem::create_directories(data_dir);
+    std::ofstream(data_dir / "file.txt") << "original";
+
+    const auto root = fimlite::to_utf8_native(data_dir);
+    const auto unsigned_baseline = temp_dir / "unsigned.json";
+    const auto signed_baseline = temp_dir / "signed.json";
+
+    REQUIRE(run_quiet({"fim_lite", "init", root, fimlite::to_utf8_native(unsigned_baseline)}) == 0);
+    REQUIRE(run_quiet({"fim_lite", "check", root, fimlite::to_utf8_native(unsigned_baseline), "--hmac-key", "secret"}) == 5);
+
+    REQUIRE(run_quiet({"fim_lite", "init", root, fimlite::to_utf8_native(signed_baseline), "--hmac-key", "secret"}) == 0);
+
+    std::ifstream original(signed_baseline, std::ios::binary);
+    std::string text((std::istreambuf_iterator<char>(original)), std::istreambuf_iterator<char>());
+    original.close();
+
+    const std::string stored_exclude = "\"exclude\": []";
+    const auto exclude_position = text.find(stored_exclude);
+
+    REQUIRE(exclude_position != std::string::npos);
+
+    text.replace(exclude_position, stored_exclude.size(), "\"exclude\": [\"file.txt\"]");
+    std::ofstream(signed_baseline, std::ios::binary) << text;
+
+    REQUIRE(run_quiet({"fim_lite", "check", root, fimlite::to_utf8_native(signed_baseline), "--hmac-key", "secret"}) == 5);
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("HMAC key comes from FIMLITE_HMAC_KEY and --hmac-key overrides it")
+{
+    const auto temp_dir = make_temp_dir("fim_lite_test_cli_hmac_env");
+    const auto data_dir = temp_dir / "data";
+
+    std::filesystem::create_directories(data_dir);
+    std::ofstream(data_dir / "file.txt") << "original";
+
+    const auto root = fimlite::to_utf8_native(data_dir);
+    const auto baseline = fimlite::to_utf8_native(temp_dir / "baseline.json");
+    const std::string env_key = u8"kľúč-z-prostredia";
+
+    set_hmac_key_env(env_key);
+
+    const int init_code = run_quiet({"fim_lite", "init", root, baseline});
+    const int check_code = run_quiet({"fim_lite", "check", root, baseline});
+    const int override_code = run_quiet({"fim_lite", "check", root, baseline, "--hmac-key", "other-key"});
+
+    clear_hmac_key_env();
+
+    const int flag_code = run_quiet({"fim_lite", "check", root, baseline, "--hmac-key", env_key});
+
+    REQUIRE(init_code == 0);
+    REQUIRE(check_code == 0);
+    REQUIRE(override_code == 5);
+    REQUIRE(flag_code == 0);
 
     std::filesystem::remove_all(temp_dir);
 }

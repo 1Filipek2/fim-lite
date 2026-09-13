@@ -67,6 +67,7 @@ add_executable(fim_lite_tests
     tests/test_baseline.cpp
     tests/test_cli.cpp
     tests/test_fsync.cpp
+    tests/test_hmac.cpp
     tests/test_scanner.cpp
 )
 
