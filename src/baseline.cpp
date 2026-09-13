@@ -1,11 +1,13 @@
 #include "fimlite/baseline.hpp"
 #include "fimlite/fsync.hpp"
+#include "fimlite/hmac.hpp"
 
 #include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -43,7 +45,8 @@ void remove_tmp_file(const std::filesystem::path& tmp_path)
 
 void save_baseline(const FileRecordMap& records,
                    const std::filesystem::path& out,
-                   const std::vector<std::string>& exclude_names)
+                   const std::vector<std::string>& exclude_names,
+                   const std::string& hmac_key)
 {
     nlohmann::json j;
     j["version"] = 1;
@@ -57,6 +60,11 @@ void save_baseline(const FileRecordMap& records,
 
     j["files"] = files;
     j["exclude"] = exclude_names;
+
+    if (!hmac_key.empty())
+    {
+        j["hmac"] = hmac_sha256_hex(hmac_key, j.dump());
+    }
 
     const std::filesystem::path tmp_path = make_tmp_path(out);
 
@@ -109,7 +117,8 @@ void save_baseline(const FileRecordMap& records,
 }
 
 FileRecordMap load_baseline(const std::filesystem::path& in,
-                            std::vector<std::string>* exclude_names_out)
+                            std::vector<std::string>* exclude_names_out,
+                            const std::string& hmac_key)
 {
     if (!std::filesystem::exists(in))
     {
@@ -128,6 +137,27 @@ FileRecordMap load_baseline(const std::filesystem::path& in,
     try
     {
         file >> j;
+
+        const std::string stored_hmac = j.value("hmac", std::string{});
+        j.erase("hmac");
+
+        if (!hmac_key.empty())
+        {
+            if (stored_hmac.empty())
+            {
+                throw BaselineSignatureError("Baseline is not signed but an HMAC key was provided");
+            }
+
+            if (!hmac_hex_equal(hmac_sha256_hex(hmac_key, j.dump()), stored_hmac))
+            {
+                throw BaselineSignatureError("Baseline signature verification failed");
+            }
+        }
+        else if (!stored_hmac.empty())
+        {
+            std::cerr << "Warning: baseline is signed but no HMAC key was provided; "
+                         "signature was NOT verified.\n";
+        }
 
         const int version = j.at("version").get<int>();
 
