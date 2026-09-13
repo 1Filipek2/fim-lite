@@ -35,6 +35,7 @@ add_library(fimlite_core
     src/cli.cpp
     src/paths.cpp
     src/fsync.cpp
+    src/hmac.cpp
 )
 
 if (WIN32)
