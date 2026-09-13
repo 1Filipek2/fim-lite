@@ -4,8 +4,10 @@
 #include "fimlite/paths.hpp"
 #include "fimlite/scanner.hpp"
 
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -69,6 +71,73 @@ TEST_CASE("Baseline round-trips non-ASCII paths and file names")
     const auto loaded = fimlite::load_baseline(baseline_path);
 
     REQUIRE(fimlite::diff(records, loaded).empty());
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("Baseline write is not blocked by a leftover fixed temp path")
+{
+    const std::filesystem::path temp_dir =
+        std::filesystem::temp_directory_path() / "fim_lite_test_baseline_leftover_tmp";
+
+    std::filesystem::remove_all(temp_dir);
+    std::filesystem::create_directories(temp_dir);
+
+    const auto baseline_path = temp_dir / "baseline.json";
+
+    std::filesystem::create_directories(temp_dir / "baseline.json.tmp");
+
+    fimlite::FileRecordMap records;
+
+    records["kept.txt"] = fimlite::FileRecord
+    {
+        "kept.txt",
+        "abc",
+        3,
+        0
+    };
+
+    fimlite::save_baseline(records, baseline_path);
+
+    REQUIRE(fimlite::diff(records, fimlite::load_baseline(baseline_path)).empty());
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("Failed baseline finalize leaves no temp file behind")
+{
+    const std::filesystem::path temp_dir =
+        std::filesystem::temp_directory_path() / "fim_lite_test_baseline_finalize_failure";
+
+    std::filesystem::remove_all(temp_dir);
+    std::filesystem::create_directories(temp_dir);
+
+    const auto baseline_path = temp_dir / "baseline.json";
+
+    std::filesystem::create_directories(baseline_path);
+    std::ofstream(baseline_path / "occupied.txt") << "occupied";
+
+    fimlite::FileRecordMap records;
+
+    records["kept.txt"] = fimlite::FileRecord
+    {
+        "kept.txt",
+        "abc",
+        3,
+        0
+    };
+
+    REQUIRE_THROWS_AS(fimlite::save_baseline(records, baseline_path), std::runtime_error);
+
+    std::size_t entry_count = 0;
+
+    for (const auto& entry : std::filesystem::directory_iterator(temp_dir))
+    {
+        REQUIRE(entry.path() == baseline_path);
+        ++entry_count;
+    }
+
+    REQUIRE(entry_count == 1);
 
     std::filesystem::remove_all(temp_dir);
 }
