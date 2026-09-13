@@ -32,6 +32,7 @@ add_library(fimlite_core
     src/scanner.cpp
     src/cli.cpp
     src/paths.cpp
+    src/fsync.cpp
 )
 
 if (WIN32)
@@ -62,6 +63,7 @@ target_link_libraries(fim_lite PRIVATE
 add_executable(fim_lite_tests
     tests/test_baseline.cpp
     tests/test_cli.cpp
+    tests/test_fsync.cpp
     tests/test_scanner.cpp
 )
 

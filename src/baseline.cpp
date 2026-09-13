@@ -1,6 +1,8 @@
 #include "fimlite/baseline.hpp"
+#include "fimlite/fsync.hpp"
 
 #include <cstdint>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -84,6 +86,16 @@ void save_baseline(const FileRecordMap& records,
         }
     }
 
+    try
+    {
+        sync_file(tmp_path);
+    }
+    catch (const std::exception&)
+    {
+        remove_tmp_file(tmp_path);
+        throw;
+    }
+
     std::error_code ec;
     std::filesystem::rename(tmp_path, out, ec);
 
@@ -92,6 +104,8 @@ void save_baseline(const FileRecordMap& records,
         remove_tmp_file(tmp_path);
         throw std::runtime_error("Failed to finalize baseline file: " + ec.message());
     }
+
+    sync_parent_directory(out);
 }
 
 FileRecordMap load_baseline(const std::filesystem::path& in,
