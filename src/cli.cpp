@@ -19,19 +19,25 @@ void print_usage(const std::string& program_name, std::ostream& out)
 {
     out << "fimlite - File Integrity Monitoring Lite\n"
         << "Usage:\n"
-        << "  " << program_name << " init <root_directory> <baseline_file> [--exclude <name> ...]\n"
-        << "  " << program_name << " check <root_directory> <baseline_file> [--exclude <name> ...]\n"
+        << "  " << program_name << " init <root_directory> <baseline_file> [--exclude <name> ...] [--hmac-key <key>]\n"
+        << "  " << program_name << " check <root_directory> <baseline_file> [--exclude <name> ...] [--hmac-key <key>]\n"
         << "  " << program_name << " help, --help\n"
         << "Commands:\n"
         << "  init   Create a baseline of the specified directory.\n"
         << "  check  Check the specified directory against the baseline.\n"
         << "  help    Displays this help message and exits successfully.\n"
+        << "Options:\n"
+        << "  --exclude <name>   Skip files and directories with this name. Can be repeated.\n"
+        << "  --hmac-key <key>   Sign the baseline on init and verify it on check with HMAC-SHA256.\n"
+        << "                     Defaults to the FIMLITE_HMAC_KEY environment variable, which is preferred\n"
+        << "                     because a key on the command line is visible to other users.\n"
         << "Exit codes:\n"
         << "  0  Success: no changes detected and every entry was read.\n"
         << "  1  Changes detected (check only). Takes precedence over 3.\n"
         << "  2  Invalid command line usage.\n"
         << "  3  Incomplete run: some entries could not be read. Symlinks that are not followed do not count.\n"
-        << "  4  Runtime error, such as a missing or corrupt baseline or an I/O failure.\n";
+        << "  4  Runtime error, such as a missing or corrupt baseline or an I/O failure.\n"
+        << "  5  Baseline signature verification failed: the baseline was modified, is not signed, or the key is wrong.\n";
 }
 
 void print_change(const Change& change)
@@ -94,13 +100,19 @@ bool has_scan_errors(const std::vector<SkippedEntry>& skipped)
                        });
 }
 
+std::string resolve_hmac_key(const std::string& cli_value)
+{
+    return cli_value.empty() ? utf8_env("FIMLITE_HMAC_KEY") : cli_value;
+}
+
 int run_init(const std::filesystem::path& root,
              const std::filesystem::path& baseline_path,
-             const std::vector<std::string>& exclude_names)
+             const std::vector<std::string>& exclude_names,
+             const std::string& hmac_key)
 {
     std::vector<SkippedEntry> skipped;
     const auto records = scan_directory(root, exclude_names, &skipped);
-    save_baseline(records, baseline_path, exclude_names);
+    save_baseline(records, baseline_path, exclude_names, hmac_key);
 
     print_skipped(skipped);
 
@@ -111,10 +123,11 @@ int run_init(const std::filesystem::path& root,
 
 int run_check(const std::filesystem::path& root,
               const std::filesystem::path& baseline_path,
-              const std::vector<std::string>& exclude_names)
+              const std::vector<std::string>& exclude_names,
+              const std::string& hmac_key)
 {
     std::vector<std::string> stored_exclude_names;
-    const auto baseline = load_baseline(baseline_path, &stored_exclude_names);
+    const auto baseline = load_baseline(baseline_path, &stored_exclude_names, hmac_key);
 
     const bool overridden = !exclude_names.empty();
     const std::vector<std::string>& effective_exclude_names =
@@ -188,13 +201,14 @@ int run_cli(const std::vector<std::string>& args)
                   << program_name
                   << " "
                   << command
-                  << " <folder> <baseline.json> [--exclude <name> ...]\n\n";
+                  << " <folder> <baseline.json> [--exclude <name> ...] [--hmac-key <key>]\n\n";
 
         print_usage(program_name, std::cerr);
         return 2;
     }
 
     std::vector<std::string> exclude_names;
+    std::string hmac_key;
 
     for (std::size_t i = 4; i < args.size(); ++i)
     {
@@ -218,6 +232,28 @@ int run_cli(const std::vector<std::string>& args)
 
             exclude_names.push_back(exclude_name);
         }
+        else if (argument == "--hmac-key")
+        {
+            if (i + 1 >= args.size())
+            {
+                std::cerr << "Error: '--hmac-key' option requires a key argument.\n";
+                return 2;
+            }
+
+            if (!hmac_key.empty())
+            {
+                std::cerr << "Error: '--hmac-key' option can be given only once.\n";
+                return 2;
+            }
+
+            hmac_key = args[++i];
+
+            if (hmac_key.empty())
+            {
+                std::cerr << "Error: '--hmac-key' option requires a non-empty key argument.\n";
+                return 2;
+            }
+        }
         else
         {
             std::cerr << "Error: Unknown option '" << argument << "'.\n";
@@ -230,15 +266,21 @@ int run_cli(const std::vector<std::string>& args)
     {
         const std::filesystem::path root = from_utf8(args[2]);
         const std::filesystem::path baseline_path = from_utf8(args[3]);
+        const std::string effective_hmac_key = resolve_hmac_key(hmac_key);
 
         if (command == "init")
         {
-            return run_init(root, baseline_path, exclude_names);
+            return run_init(root, baseline_path, exclude_names, effective_hmac_key);
         }
         else
         {
-            return run_check(root, baseline_path, exclude_names);
+            return run_check(root, baseline_path, exclude_names, effective_hmac_key);
         }
+    }
+    catch (const BaselineSignatureError& e)
+    {
+        std::cerr << "Error: " << e.what() << '\n';
+        return 5;
     }
     catch (const std::exception& e)
     {

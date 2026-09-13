@@ -1,5 +1,9 @@
 #include "fimlite/paths.hpp"
 
+#include <cstddef>
+#include <cstdlib>
+#include <memory>
+
 namespace fimlite
 {
 
@@ -16,6 +20,26 @@ std::string to_utf8_native(const std::filesystem::path& path)
 std::filesystem::path from_utf8(const std::string& text)
 {
     return std::filesystem::u8path(text);
+}
+
+std::string utf8_env(const std::string& name)
+{
+#ifdef _WIN32
+    wchar_t* buffer = nullptr;
+    std::size_t length = 0;
+
+    if (_wdupenv_s(&buffer, &length, from_utf8(name).c_str()) != 0 || !buffer)
+    {
+        return std::string{};
+    }
+
+    const std::unique_ptr<wchar_t, decltype(&std::free)> owned(buffer, &std::free);
+
+    return to_utf8_native(std::filesystem::path(owned.get()));
+#else
+    const char* value = std::getenv(name.c_str());
+    return value ? std::string(value) : std::string{};
+#endif
 }
 
 #ifdef _WIN32
