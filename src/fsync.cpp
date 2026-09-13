@@ -60,7 +60,10 @@ void sync_parent_directory(const std::filesystem::path&)
 namespace
 {
 
-void sync_descriptor(const std::filesystem::path& path, int flags, const std::string& description)
+void sync_descriptor(const std::filesystem::path& path,
+                     int flags,
+                     const std::string& description,
+                     bool ignore_unsupported)
 {
     const int descriptor = ::open(path.c_str(), flags);
 
@@ -75,18 +78,25 @@ void sync_descriptor(const std::filesystem::path& path, int flags, const std::st
 
     ::close(descriptor);
 
-    if (result != 0)
+    if (result == 0)
     {
-        throw std::system_error(sync_error, std::generic_category(),
-                                "Failed to sync " + description + ": " + to_utf8_native(path));
+        return;
     }
+
+    if (ignore_unsupported && (sync_error == EINVAL || sync_error == ENOTSUP))
+    {
+        return;
+    }
+
+    throw std::system_error(sync_error, std::generic_category(),
+                            "Failed to sync " + description + ": " + to_utf8_native(path));
 }
 
 } // namespace
 
 void sync_file(const std::filesystem::path& path)
 {
-    sync_descriptor(path, O_RDONLY, "file");
+    sync_descriptor(path, O_RDONLY, "file", false);
 }
 
 void sync_parent_directory(const std::filesystem::path& path)
@@ -95,7 +105,8 @@ void sync_parent_directory(const std::filesystem::path& path)
 
     sync_descriptor(parent.empty() ? std::filesystem::path(".") : parent,
                     O_RDONLY | O_DIRECTORY,
-                    "directory");
+                    "directory",
+                    true);
 }
 
 #endif
