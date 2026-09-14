@@ -47,6 +47,46 @@ bool should_exclude(const std::filesystem::path& path,
     return false;
 }
 
+std::string relative_key_or_empty(const std::filesystem::path& path, const std::filesystem::path& root)
+{
+    try
+    {
+        std::error_code ec;
+        const std::filesystem::path relative = std::filesystem::relative(path, root, ec);
+
+        return ec ? std::string{} : to_utf8(relative);
+    }
+    catch (const std::exception&)
+    {
+        return std::string{};
+    }
+}
+
+std::runtime_error unreadable_root_error(const std::filesystem::path& root, const std::error_code& ec)
+{
+    return std::runtime_error("Cannot read root directory: " + to_utf8_native(root) + ": " + ec.message());
+}
+
+bool is_covered_by_scan_error(const std::string& path, const std::vector<SkippedEntry>& skipped)
+{
+    return std::any_of(skipped.begin(), skipped.end(),
+                       [&path](const SkippedEntry& entry)
+                       {
+                           if (entry.kind != SkipReason::Error)
+                           {
+                               return false;
+                           }
+
+                           const std::string& prefix = entry.relative_path;
+
+                           return prefix.empty() ||
+                                  path == prefix ||
+                                  (path.size() > prefix.size() &&
+                                   path.compare(0, prefix.size(), prefix) == 0 &&
+                                   path[prefix.size()] == '/');
+                       });
+}
+
 } // namespace
 
 bool exclude_names_equal_ignore_case(const std::vector<std::string>& left,
@@ -76,6 +116,13 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
     FileRecordMap result;
     std::error_code ec;
 
+    const std::filesystem::directory_iterator root_probe(root, ec);
+
+    if (ec)
+    {
+        throw unreadable_root_error(root, ec);
+    }
+
     const std::filesystem::recursive_directory_iterator end_iter;
 
     std::filesystem::recursive_directory_iterator dir_iter(
@@ -85,23 +132,20 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
 
     if (ec)
     {
-        if (skipped)
-        {
-            skipped->push_back({to_utf8_native(root), ec.message()});
-        }
-
-        return result;
+        throw unreadable_root_error(root, ec);
     }
 
     while (dir_iter != end_iter)
     {
         std::string current_path;
+        std::filesystem::path current_entry_path;
 
         try
         {
             const auto& entry = *dir_iter;
+            current_entry_path = entry.path();
             current_path = to_utf8_native(entry.path());
-        
+
             if (should_exclude(entry.path(), exclude_names))
             {
                 if (entry.is_directory())
@@ -125,7 +169,10 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
                 {
                     if (skipped)
                     {
-                        skipped->push_back({current_path, probe_ec.message()});
+                        skipped->push_back({current_path,
+                                            probe_ec.message(),
+                                            SkipReason::Error,
+                                            relative_key_or_empty(entry.path(), root)});
                     }
 
                     dir_iter.disable_recursion_pending();
@@ -158,7 +205,12 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
         {
             if (skipped)
             {
-                skipped->push_back({current_path.empty() ? "<unknown path>" : current_path, e.what()});
+                skipped->push_back({current_path.empty() ? "<unknown path>" : current_path,
+                                    e.what(),
+                                    SkipReason::Error,
+                                    current_entry_path.empty()
+                                        ? std::string{}
+                                        : relative_key_or_empty(current_entry_path, root)});
             }
         }
 
@@ -169,7 +221,9 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
             if (skipped)
             {
                 skipped->push_back({current_path.empty() ? "<unknown path>" : current_path,
-                                    "Traversal aborted: " + ec.message()});
+                                    "Traversal aborted: " + ec.message(),
+                                    SkipReason::Error,
+                                    std::string{}});
             }
 
             ec.clear();
@@ -180,9 +234,19 @@ FileRecordMap scan_directory(const std::filesystem::path& root,
     return result;
 }
 
-std::vector<Change> diff(const FileRecordMap& baseline, const FileRecordMap& current)
+std::vector<Change> diff(const FileRecordMap& baseline,
+                         const FileRecordMap& current,
+                         const std::vector<SkippedEntry>& skipped)
 {
     std::vector<Change> result;
+
+    const auto report_removed = [&result, &skipped](const std::string& path)
+    {
+        if (!is_covered_by_scan_error(path, skipped))
+        {
+            result.push_back({ChangeType::Removed, path});
+        }
+    };
 
     auto baseline_it = baseline.begin();
     auto current_it = current.begin();
@@ -191,7 +255,7 @@ std::vector<Change> diff(const FileRecordMap& baseline, const FileRecordMap& cur
     {
         if (baseline_it->first < current_it->first)
         {
-            result.push_back({ChangeType::Removed, baseline_it->first});
+            report_removed(baseline_it->first);
             ++baseline_it;
         }
         else if (current_it->first < baseline_it->first)
@@ -213,7 +277,7 @@ std::vector<Change> diff(const FileRecordMap& baseline, const FileRecordMap& cur
 
     while (baseline_it != baseline.end())
     {
-        result.push_back({ChangeType::Removed, baseline_it->first});
+        report_removed(baseline_it->first);
         ++baseline_it;
     }
 

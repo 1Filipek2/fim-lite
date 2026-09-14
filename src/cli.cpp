@@ -141,7 +141,7 @@ int run_check(const std::filesystem::path& root,
 
     std::vector<SkippedEntry> skipped;
     const auto current = scan_directory(root, effective_exclude_names, &skipped);
-    const auto changes = diff(baseline, current);
+    const auto changes = diff(baseline, current, skipped);
 
     print_skipped(skipped);
 
