@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -107,6 +108,58 @@ TEST_CASE("Diff returns empty vector when maps are identical")
     const auto changes = fimlite::diff(baseline, current);
 
     REQUIRE(changes.empty());
+}
+
+TEST_CASE("Diff does not report entries that could not be read as removed")
+{
+    fimlite::FileRecordMap baseline;
+
+    for (const std::string path : {"locked.txt", "denied/a.txt", "denied/sub/b.txt", "deniedness.txt", "gone.txt", "link.txt"})
+    {
+        baseline[path] = fimlite::FileRecord{path, "111", 1, 1};
+    }
+
+    const fimlite::FileRecordMap current;
+
+    const std::vector<fimlite::SkippedEntry> skipped
+    {
+        {"C:/root/locked.txt", "Failed to open file", fimlite::SkipReason::Error, "locked.txt"},
+        {"C:/root/denied", "Permission denied", fimlite::SkipReason::Error, "denied"},
+        {"C:/root/link.txt", "Symlink not followed", fimlite::SkipReason::Symlink, "link.txt"}
+    };
+
+    const auto changes = fimlite::diff(baseline, current, skipped);
+
+    std::vector<std::string> removed;
+
+    for (const auto& change : changes)
+    {
+        REQUIRE(change.type == fimlite::ChangeType::Removed);
+        removed.push_back(change.path);
+    }
+
+    REQUIRE(removed == std::vector<std::string>{"deniedness.txt", "gone.txt", "link.txt"});
+}
+
+TEST_CASE("Diff reports no removals when the unreadable part of the tree is unknown")
+{
+    fimlite::FileRecordMap baseline;
+    baseline["a.txt"] = fimlite::FileRecord{"a.txt", "111", 1, 1};
+    baseline["sub/b.txt"] = fimlite::FileRecord{"sub/b.txt", "222", 1, 1};
+
+    fimlite::FileRecordMap current;
+    current["new.txt"] = fimlite::FileRecord{"new.txt", "333", 1, 1};
+
+    const std::vector<fimlite::SkippedEntry> skipped
+    {
+        {"<unknown path>", "Traversal aborted: I/O error", fimlite::SkipReason::Error, ""}
+    };
+
+    const auto changes = fimlite::diff(baseline, current, skipped);
+
+    REQUIRE(changes.size() == 1);
+    REQUIRE(changes[0].type == fimlite::ChangeType::Added);
+    REQUIRE(changes[0].path == "new.txt");
 }
 
 TEST_CASE("Diff treats every entry as added when baseline is empty")
@@ -501,6 +554,7 @@ TEST_CASE("Scan directory continues past an unreadable directory and reports it"
 
     REQUIRE(skipped.size() == 1);
     REQUIRE(skipped[0].path == fimlite::to_utf8_native(denied_dir));
+    REQUIRE(skipped[0].relative_path == "denied");
 
     std::filesystem::remove_all(temp_dir);
 }
@@ -540,6 +594,43 @@ TEST_CASE("Scan directory reports an unreadable file instead of failing the scan
 
     REQUIRE(skipped.size() == 1);
     REQUIRE(skipped[0].path == fimlite::to_utf8_native(unreadable_file));
+    REQUIRE(skipped[0].relative_path == "secret.txt");
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("Scan directory throws when the root directory cannot be read")
+{
+    if (::geteuid() == 0)
+    {
+        SUCCEED("Skipped: running as root, chmod 000 is not enforced");
+        return;
+    }
+
+    const std::filesystem::path temp_dir =
+        std::filesystem::temp_directory_path() / "fim_lite_test_unreadable_root";
+
+    std::filesystem::remove_all(temp_dir);
+    std::filesystem::create_directories(temp_dir);
+    std::ofstream(temp_dir / "hidden.txt") << "hidden";
+
+    std::filesystem::permissions(temp_dir, std::filesystem::perms::none);
+
+    std::vector<fimlite::SkippedEntry> skipped;
+    bool threw = false;
+
+    try
+    {
+        fimlite::scan_directory(temp_dir, {}, &skipped);
+    }
+    catch (const std::runtime_error&)
+    {
+        threw = true;
+    }
+
+    std::filesystem::permissions(temp_dir, std::filesystem::perms::owner_all);
+
+    REQUIRE(threw);
 
     std::filesystem::remove_all(temp_dir);
 }
