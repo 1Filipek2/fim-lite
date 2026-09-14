@@ -13,7 +13,10 @@
 #include <system_error>
 #include <vector>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <cstdio>
+#include <share.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -296,7 +299,90 @@ TEST_CASE("HMAC key comes from FIMLITE_HMAC_KEY and --hmac-key overrides it")
     std::filesystem::remove_all(temp_dir);
 }
 
+TEST_CASE("Check returns 3 rather than reporting a file that cannot be read as removed")
+{
 #ifndef _WIN32
+    if (::geteuid() == 0)
+    {
+        SUCCEED("Skipped: running as root, chmod 000 is not enforced");
+        return;
+    }
+#endif
+
+    clear_hmac_key_env();
+
+    const auto temp_dir = make_temp_dir("fim_lite_test_cli_unreadable_file");
+    const auto data_dir = temp_dir / "data";
+    const auto blocked_file = data_dir / "blocked.txt";
+
+    std::filesystem::create_directories(data_dir);
+    std::ofstream(data_dir / "ok.txt") << "ok";
+    std::ofstream(blocked_file) << "blocked";
+
+    const auto root = fimlite::to_utf8_native(data_dir);
+    const auto baseline = fimlite::to_utf8_native(temp_dir / "baseline.json");
+
+    const int init_code = run_quiet({"fim_lite", "init", root, baseline});
+
+#ifdef _WIN32
+    FILE* const lock = _wfsopen(blocked_file.c_str(), L"rb", _SH_DENYRW);
+    REQUIRE(lock != nullptr);
+#else
+    std::filesystem::permissions(blocked_file, std::filesystem::perms::none);
+#endif
+
+    const int check_code = run_quiet({"fim_lite", "check", root, baseline});
+
+#ifdef _WIN32
+    std::fclose(lock);
+#else
+    std::filesystem::permissions(blocked_file, std::filesystem::perms::owner_all);
+#endif
+
+    REQUIRE(init_code == 0);
+    REQUIRE(check_code == 3);
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+#ifndef _WIN32
+
+TEST_CASE("Init and check return 4 when the root directory cannot be read")
+{
+    if (::geteuid() == 0)
+    {
+        SUCCEED("Skipped: running as root, chmod 000 is not enforced");
+        return;
+    }
+
+    clear_hmac_key_env();
+
+    const auto temp_dir = make_temp_dir("fim_lite_test_cli_unreadable_root");
+    const auto data_dir = temp_dir / "data";
+
+    std::filesystem::create_directories(data_dir);
+    std::ofstream(data_dir / "file.txt") << "file";
+
+    const auto root = fimlite::to_utf8_native(data_dir);
+    const auto baseline = fimlite::to_utf8_native(temp_dir / "baseline.json");
+    const auto empty_baseline = fimlite::to_utf8_native(temp_dir / "empty.json");
+
+    const int readable_init_code = run_quiet({"fim_lite", "init", root, baseline});
+
+    std::filesystem::permissions(data_dir, std::filesystem::perms::none);
+
+    const int init_code = run_quiet({"fim_lite", "init", root, empty_baseline});
+    const int check_code = run_quiet({"fim_lite", "check", root, baseline});
+
+    std::filesystem::permissions(data_dir, std::filesystem::perms::owner_all);
+
+    REQUIRE(readable_init_code == 0);
+    REQUIRE(init_code == 4);
+    REQUIRE(check_code == 4);
+    REQUIRE_FALSE(std::filesystem::exists(temp_dir / "empty.json"));
+
+    std::filesystem::remove_all(temp_dir);
+}
 
 TEST_CASE("Init and check return 3 when a directory cannot be read")
 {
@@ -312,6 +398,7 @@ TEST_CASE("Init and check return 3 when a directory cannot be read")
 
     std::filesystem::create_directories(denied_dir);
     std::ofstream(data_dir / "ok.txt") << "ok";
+    std::ofstream(denied_dir / "hidden.txt") << "hidden";
 
     const auto root = fimlite::to_utf8_native(data_dir);
     const auto baseline = fimlite::to_utf8_native(temp_dir / "baseline.json");
